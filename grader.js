@@ -1,4 +1,4 @@
-!#!/usr/bin/env node
+#!usr/bin/env node
 /*
 Automatically grade files for the presence of specified HTML tags/attributes.
 Uses commander.js and cheerio. Teaches command line application development
@@ -23,12 +23,15 @@ References:
 
 var fs = require('fs');
 var program = require('commander');
+var rest = require("restler");
 
 var cheerio = require('cheerio');
-var HTMLFILE_DEFAULT = "index.html";
+var HTMLFILE_DEFAULT = "";
 var CHECKSFILE_DEFAULT = "checks.json";
-
+var HTML_URL_DEFAULT = "http://immense-stream-3571.herokuapp.com";
 var assertFileExists = function(infile) {
+    if (infile == null || infile =="") return "";
+
     var instr = infile.toString();
     if(!fs.existsSync(instr)) {
         console.log("%s does not exist. Exiting.", instr);
@@ -37,8 +40,14 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
+
+var assertUrlExists = function(url) {
+    if (url == null || url == "") return "";
+    return url.toString();
+}
+
 var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
+   return cheerio.load(fs.readFileSync(htmlfile));
 };
 
 var loadChecks = function(checksfile) {
@@ -56,6 +65,31 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+var checkHtmlUrl = function(htmlurl, checksfile) {
+    
+    rest.get(htmlurl).on("complete", function(result, response) {
+        if (result instanceof Error) {
+            console.error("Error: %s", response.message);
+            process.exit(1);
+        }
+
+        var checkJson = checkHtmlText(result, checksfile);
+        var outJson = JSON.stringify(checkJson, null, 4);
+        console.log(outJson);
+     });
+};
+
+var checkHtmlText = function(htmlText, checksfile) {
+    $ = cheerio.load(htmlText);
+    checks = loadChecks(checksfile).sort();
+    var out = {};
+    for(var ii in checks) {
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;
+    }
+    return out;
+};
+
 var clone = function(fn) {
     // Workaround for commander.js issue.
     // http://stackoverflow.com/a/6772648
@@ -65,10 +99,20 @@ if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
-} else {
+        .option('-u, --url <url>', 'Url to Index.html', clone(assertUrlExists), HTML_URL_DEFAULT)
+            .parse(process.argv);
+
+    if (program.file != "") {
+	console.log('Checking file: ' + program.file);
+	var checkJson = checkHtmlFile(program.file, program.checks); 
+        var outJson = JSON.stringify(checkJson, null, 4);
+        console.log(outJson);
+    }
+    else {
+	console.log('Checking url: ' + program.url);
+	checkHtmlUrl(program.url, program.checks);
+    }
+}
+else {
     exports.checkHtmlFile = checkHtmlFile;
 }
